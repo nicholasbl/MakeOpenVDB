@@ -2,12 +2,15 @@
 
 #include "vdb_tools.h"
 
+#include <vtkAMRInformation.h>
+#include <vtkAMReXGridReader.h>
 #include <vtkCompositeDataIterator.h>
 #include <vtkCompositeDataSet.h>
 #include <vtkDataArray.h>
 #include <vtkImageData.h>
 #include <vtkMultiBlockDataSet.h>
 #include <vtkMultiProcessController.h>
+#include <vtkOverlappingAMR.h>
 #include <vtkPointData.h>
 #include <vtkResampleToImage.h>
 #include <vtkSMPTools.h>
@@ -22,6 +25,7 @@
 
 #include <array>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <queue>
@@ -216,6 +220,43 @@ openvdb::GridPtrVec convert_vti(Config const& config) {
     return convert_image(im, config);
 }
 
+std::array<int, 3> compute_sample_rate(Config const& config, double bounds[6]) {
+    std::array<int, 3> num_samples;
+
+    // sample rate is the max number of samples on a side.
+    // try to keep sampling isotropic
+
+    double deltas[3] = { bounds[1] - bounds[0],
+                         bounds[3] - bounds[2],
+                         bounds[5] - bounds[4] };
+
+    std::cout << "Deltas " << deltas[0] << " " << deltas[1] << " " << deltas[2]
+              << "\n";
+
+
+    double min_size = std::min(deltas[0], std::min(deltas[1], deltas[2]));
+
+    double scales[3] = { deltas[0] / min_size,
+                         deltas[1] / min_size,
+                         deltas[2] / min_size };
+
+    double factor = 1;
+
+    if (config.num_samples) {
+        factor = config.num_samples.value();
+    } else if (config.sample_rate) {
+        factor = min_size / config.sample_rate.value();
+    } else {
+        factor = 100;
+    }
+
+    num_samples[0] = scales[0] * factor;
+    num_samples[1] = scales[1] * factor;
+    num_samples[2] = scales[2] * factor;
+
+    return num_samples;
+}
+
 openvdb::GridPtrVec convert_vtm(Config const& config) {
     openvdb::GridPtrVec ret;
 
@@ -259,38 +300,7 @@ openvdb::GridPtrVec convert_vtm(Config const& config) {
               << " " << bounds[3] << " " << bounds[4] << " " << bounds[5]
               << "\n";
 
-    std::array<int, 3> num_samples;
-
-    {
-        // sample rate is the max number of samples on a side.
-        // try to keep sampling isotropic
-
-        double deltas[3] = { bounds[1] - bounds[0],
-                             bounds[3] - bounds[2],
-                             bounds[5] - bounds[4] };
-
-        std::cout << "Deltas " << deltas[0] << " " << deltas[1] << " "
-                  << deltas[2] << "\n";
-
-
-        double min_size = std::min(deltas[0], std::min(deltas[1], deltas[2]));
-
-        double scales[3] = { deltas[0] / min_size,
-                             deltas[1] / min_size,
-                             deltas[2] / min_size };
-
-        double factor = 1;
-
-        if (config.num_samples) {
-            factor = config.num_samples.value();
-        } else if (config.sample_rate) {
-            factor = min_size / config.sample_rate.value();
-        }
-
-        num_samples[0] = scales[0] * factor;
-        num_samples[1] = scales[1] * factor;
-        num_samples[2] = scales[2] * factor;
-    }
+    std::array<int, 3> num_samples = compute_sample_rate(config, bounds);
 
     std::cout << "Sampling " << num_samples[0] << " " << num_samples[1] << " "
               << num_samples[2] << "\n";
@@ -313,6 +323,205 @@ openvdb::GridPtrVec convert_vtm(Config const& config) {
 
         ret.insert(ret.end(), sub_parts.begin(), sub_parts.end());
     }
+
+    return ret;
+}
+
+// amr.n_cell
+// amr.n_cell = 16 16 32
+
+// Taken from Dacite source
+enum class StringSplitControl {
+    KEEP_EMPTY_PARTS,
+    SKIP_EMPTY_PARTS,
+};
+
+template <class Function>
+void split(std::string_view   str,
+           std::string_view   delim,
+           StringSplitControl c,
+           Function&&         output_fun) {
+
+    auto       first  = str.begin();
+    auto       second = str.begin();
+    auto const last   = str.end();
+
+    for (; second != last and first != last; first = second + 1) {
+        assert(first - str.data() < str.size());
+        assert(second - str.data() < str.size());
+        second = std::find_first_of(first, last, delim.cbegin(), delim.cend());
+
+        second = (second == (const char*)std::string::npos) ? last : second;
+
+        assert(second - str.data() <= str.size());
+
+        if (first != second or c == StringSplitControl::KEEP_EMPTY_PARTS) {
+            auto sp = std::string_view(first, second - first);
+            output_fun(sp);
+        }
+    }
+}
+
+std::array<int, 3> find_cell_counts(Config const&      config,
+                                    vtkOverlappingAMR* output) {
+    // TODO find if there is VTK way of getting this info...I can't seem to find
+    // any.
+
+    std::cout << "Finding cell counts...\n";
+
+    if (!fs::is_directory(config.input_path)) {
+        std::cerr << "Input path is not a dir??\n";
+        return {};
+    }
+
+
+    for (auto const& dir_entry :
+         std::filesystem::directory_iterator { config.input_path }) {
+
+        if (!fs::is_regular_file(dir_entry)) continue;
+
+        std::cout << dir_entry.path() << '\n';
+
+        std::ifstream ifs(dir_entry.path());
+
+        if (!ifs.is_open()) continue;
+
+
+        std::string line;
+
+        while (std::getline(ifs, line)) {
+            if (line.empty()) continue;
+
+            if (line.rfind("amr.n_cell", 0) != 0) continue;
+
+            auto eq_pos = line.find('=');
+
+            if (eq_pos == std::string::npos) continue;
+
+            auto l = std::string_view(line).substr(eq_pos + 1);
+
+            if (l.empty()) continue;
+
+            std::array<int, 3> ret = { 1, 1, 1 };
+
+            size_t cursor = 0;
+
+            split(l, " ", StringSplitControl::SKIP_EMPTY_PARTS, [&](auto v) {
+                ret.at(cursor) = std::stoi(std::string(v));
+                cursor++;
+            });
+
+            std::cout << "Found:" << ret[0] << " " << ret[1] << " " << ret[2]
+                      << std::endl;
+
+            return ret;
+        }
+    }
+
+    // if we got here, we havent found a cell count. we should try to figure it
+    // out.
+
+    auto ncells = output->GetNumberOfCells();
+
+    double bounds[6] = { 0, 0, 0, 0, 0, 0 };
+    output->GetBounds(bounds);
+
+    double deltas[3] = { bounds[1] - bounds[0],
+                         bounds[3] - bounds[2],
+                         bounds[5] - bounds[4] };
+
+    auto dsum = std::sqrt(deltas[0] * deltas[0] + deltas[1] * deltas[1] +
+                          deltas[2] * deltas[2]);
+
+    std::array<int, 3> ret;
+
+    for (int i = 0; i < 3; i++) {
+        ret[i] = std::ceil(deltas[i] * ncells / dsum);
+    }
+
+    return ret;
+}
+
+openvdb::GridPtrVec convert_amrex(Config const& config) {
+    openvdb::GridPtrVec ret;
+
+    auto reader = vtkSmartPointer<vtkAMReXGridReader>::New();
+
+    reader->SetFileName(config.input_path.c_str());
+    reader->Update();
+
+    int level =
+        config.requested_amr_level.value_or(reader->GetNumberOfLevels());
+
+    reader->SetMaxLevel(level);
+    reader->Update();
+
+    for (int i = 0; i < reader->GetNumberOfCellArrays(); i++) {
+        auto name = reader->GetCellArrayName(i);
+
+        if (config.name_map.count(name)) {
+            reader->SetCellArrayStatus(name, 1);
+        }
+    }
+
+    reader->Update();
+
+    auto* output = reader->GetOutput();
+
+
+    std::array<int, 3> extents = find_cell_counts(config, output);
+
+
+    int refinement_ratio =
+        output->GetRefinementRatio(reader->GetNumberOfLevels() - 1); //?
+
+    std::cout << "Levels: " << level << std::endl;
+    std::cout << "Ratio:  " << refinement_ratio << std::endl;
+
+    double bounds[6] = { 0, 0, 0, 0, 0, 0 };
+    output->GetBounds(bounds);
+
+    // output->GetAMRInfo()->GetSpacing(level, extents);
+
+
+    std::cout << "Bounds " << bounds[0] << " " << bounds[1] << " " << bounds[2]
+              << " " << bounds[3] << " " << bounds[4] << " " << bounds[5]
+              << "\n";
+
+    std::cout << "Extents " << extents[0] << " " << extents[1] << " "
+              << extents[2] << "\n";
+
+
+    std::array<int, 3> num_samples;
+
+    if (config.sample_rate or config.num_samples) {
+        num_samples = compute_sample_rate(config, bounds);
+    } else {
+        auto scale_by = std::pow(refinement_ratio, level);
+
+        std::cout << "Scale By: " << scale_by << std::endl;
+
+        for (int i = 0; i < 3; i++) {
+            num_samples[i] = extents[i] * scale_by;
+        }
+    }
+
+    std::cout << "Sampling " << num_samples[0] << " " << num_samples[1] << " "
+              << num_samples[2] << "\n";
+
+    auto sampler = vtkSmartPointer<vtkResampleToImage>::New();
+
+    sampler->SetInputDataObject(output);
+    sampler->SetUseInputBounds(true);
+    sampler->SetSamplingDimensions(
+        num_samples[0], num_samples[1], num_samples[2]);
+
+
+    sampler->Update();
+
+    auto sub_parts = convert_image(sampler->GetOutput(), config);
+
+    ret.insert(ret.end(), sub_parts.begin(), sub_parts.end());
 
     return ret;
 }
@@ -341,6 +550,11 @@ openvdb::GridPtrVec VTKPlugin::convert(Config const& config) {
     } else if (ext == ".vtm") {
         return convert_vtm(config);
     }
+
+    // has the user given us a type hint for something else?
+    auto is_amrex = config.all_flags.count("amrex");
+
+    if (is_amrex) { return convert_amrex(config); }
 
     return {};
 }

@@ -21,6 +21,8 @@ struct Config {
     std::optional<int>    num_samples;
     std::optional<double> sample_rate;
 
+    std::optional<int> requested_amr_level;
+
     std::string get_flag(std::string key) const {
         auto iter = all_flags.find(key);
         if (iter == all_flags.end()) return {};

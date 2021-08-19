@@ -6,6 +6,7 @@
 
 #include "binaryplugin.h"
 
+#include <cxxopts.hpp>
 
 #include <openvdb/openvdb.h>
 #include <openvdb/tools/Composite.h>
@@ -18,54 +19,46 @@
 #include <thread>
 
 
-Config configure(std::queue<std::string_view> raw_args) {
+template <class T, class Function>
+auto test_and_set(cxxopts::ParseResult const& result,
+                  std::string                 opt,
+                  Function&&                  function) {
+    try {
+        function(result[opt].as<T>());
+    } catch (...) { }
+}
+
+Config configure(cxxopts::ParseResult& result) {
     Config config;
 
-    std::vector<std::string_view> args;
+    test_and_set<std::string>(result, "plugin", [&](auto v) {
+        if (v != "auto") config.requested_plugin = v;
+    });
 
-    while (!raw_args.empty()) {
-        // take next
-        auto str = raw_args.front();
+    test_and_set<std::string>(result, "density", [&](auto v) {
+        if (!v.empty()) config.name_map[v] = "density";
+    });
+    test_and_set<std::string>(result, "temp", [&](auto v) {
+        if (!v.empty()) config.name_map[v] = "temperature";
+    });
+    test_and_set<std::string>(result, "flame", [&](auto v) {
+        if (!v.empty()) config.name_map[v] = "flame";
+    });
 
-        raw_args.pop();
+    test_and_set<int>(result, "nsample", [&](auto v) {
+        if (v > 0) config.num_samples = v;
+    });
 
-        if (str.find("-") != 0) {
-            args.push_back(str);
-            continue;
-        }
+    test_and_set<float>(result, "rate", [&](auto v) {
+        if (v > 0) config.sample_rate = v;
+    });
 
-        // options better have another string after
-        if (raw_args.empty()) break;
+    test_and_set<float>(result, "level", [&](auto v) {
+        if (v > 0) config.requested_amr_level = v;
+    });
 
-        auto next = raw_args.front();
-
-        config.all_flags[std::string(str)] = std::string(next);
-    }
-
-    {
-        // sort out options
-
-        auto test_and_set = [&](std::string key, auto function) {
-            auto iter = config.all_flags.find(key);
-
-            if (iter != config.all_flags.end()) { function(iter->second); }
-        };
-
-        // what is the option?
-        test_and_set("-o", [&](auto v) { config.output_path = v; });
-
-        test_and_set("-p", [&](auto v) { config.requested_plugin = v; });
-
-        test_and_set("-d", [&](auto v) { config.name_map[v] = "density"; });
-        test_and_set("-t", [&](auto v) { config.name_map[v] = "temperature"; });
-        test_and_set("-f", [&](auto v) { config.name_map[v] = "flame"; });
-
-        test_and_set("-n", [&](auto v) { config.num_samples = std::stoi(v); });
-
-        test_and_set("-d", [&](auto v) { config.sample_rate = std::stod(v); });
-    }
-
-    config.input_path = args.at(0);
+    config.input_path  = result["input"].as<std::string>();
+    config.output_path = result["output"].as<std::string>();
 
     if (config.output_path.empty()) {
         config.output_path = config.input_path;
@@ -80,8 +73,8 @@ Config configure(std::queue<std::string_view> raw_args) {
         config.sample_rate = .1;
     }
 
-    if (!config.num_samples and !config.sample_rate) {
-        config.num_samples = 100;
+    for (auto const& kv : result.unmatched()) {
+        config.all_flags[kv] = std::string("1");
     }
 
     std::cout << "Input file:  " << config.input_path << "\n";
@@ -131,23 +124,65 @@ void install_plugin(openvdb::GridPtrVec& grids, Config const& config) {
 
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) return EXIT_FAILURE;
-
     openvdb::initialize();
 
-    auto const config = [&]() {
-        std::queue<std::string_view> pack;
-        for (int i = 1; i < argc; i++) {
-            pack.push(argv[i]);
-        }
-        return configure(pack);
-    }();
+    cxxopts::Options options("make_openvdb",
+                             "Convert files to a blender-friendly openvdb");
+
+    // clang-format off
+    options.add_options()
+            ("p,plugin",
+             "Request plugin",
+             cxxopts::value<std::string>()->default_value("auto"))
+            ("d,density",
+             "Map name to density",
+             cxxopts::value<std::string>()->default_value(""))
+            ("t,temp",
+             "Map name to temperature",
+             cxxopts::value<std::string>()->default_value(""))
+            ("f,flame",
+             "Map name to flame",
+             cxxopts::value<std::string>()->default_value(""))
+            ("n,nsample",
+             "Override sampling with a number of samples",
+             cxxopts::value<int>()->default_value("0"))
+            ("r,rate",
+             "Override sampling with a rate",
+             cxxopts::value<float>()->default_value("-1.0"))
+            ("l,level",
+             "Requested AMR Level",
+             cxxopts::value<int>()->default_value("-1"))
+            ("i,input", "Input file", cxxopts::value<std::string>())
+            ("o,output", "Output file", cxxopts::value<std::string>())
+            ("positional",
+            "Positional arguments: these are the arguments that are entered "
+            "without an option",
+             cxxopts::value<std::vector<std::string>>()
+             )
+            ;
+    // clang-format on
+
+    options.allow_unrecognised_options();
+
+    options.parse_positional({ "input", "output" });
+
+
+    auto result = options.parse(argc, argv);
+
+
+    auto const config = configure(result);
 
 
     std::cout << "Platform concurrency " << std::thread::hardware_concurrency()
               << "\n";
 
-    if (!fs::exists(config.input_path)) return EXIT_FAILURE;
+
+    if (!fs::is_regular_file(config.input_path)) {
+        if (!fs::is_directory(config.input_path)) {
+            std::cerr << "Unable to open input file!\n";
+            return EXIT_FAILURE;
+        }
+    }
 
     std::cout << "Loading...\n";
 

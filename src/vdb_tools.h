@@ -1,6 +1,7 @@
 #ifndef VDB_TOOLS_H
 #define VDB_TOOLS_H
 
+#include <mutex>
 #include <optional>
 #include <type_traits>
 
