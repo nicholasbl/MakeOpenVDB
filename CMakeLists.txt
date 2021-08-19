@@ -52,17 +52,22 @@ CPMAddPackage(
     "CXXOPTS_BUILD_TESTS Off"
 )
 
-# These are required
-find_library(OPENVDB openvdb REQUIRED)
-find_library(TBB tbb REQUIRED)
-find_library(HALF NAMES half Half REQUIRED)
+find_package(OpenVDB)
 
-find_path(OPENVDB_INC openvdb/openvdb.h REQUIRED)
+if (${OpenVDB_FOUND})
+    target_include_directories(make_openvdb PRIVATE OpenVDB)
+else()
+    find_path(OPENVDB_INC openvdb/openvdb.h REQUIRED)
+    find_library(OPENVDB openvdb REQUIRED)
+    find_library(TBB tbb REQUIRED)
+    find_library(HALF NAMES half Half REQUIRED)
+
+    target_include_directories(make_openvdb PRIVATE ${OPENVDB_INC})
+    target_link_libraries(make_openvdb PRIVATE ${OPENVDB} ${TBB} ${HALF})
+endif()
+
 
 set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
 set (CMAKE_L_FLAGS_DEBUG "${CMAKE_L_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-
-target_include_directories(make_openvdb PRIVATE ${OPENVDB_INC})
-target_link_libraries(make_openvdb PRIVATE ${OPENVDB} ${TBB} ${HALF})
 
 target_link_libraries(make_openvdb PRIVATE cxxopts)
