@@ -52,10 +52,10 @@ CPMAddPackage(
     "CXXOPTS_BUILD_TESTS Off"
 )
 
-find_package(OpenVDB)
+find_package(OpenVDB COMPONENTS openvdb)
 
 if (${OpenVDB_FOUND})
-    target_include_directories(make_openvdb PRIVATE OpenVDB)
+    target_link_libraries(make_openvdb PRIVATE OpenVDB::openvdb)
 else()
     find_path(OPENVDB_INC openvdb/openvdb.h REQUIRED)
     find_library(OPENVDB openvdb REQUIRED)
