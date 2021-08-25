@@ -67,6 +67,19 @@ Config configure(cxxopts::ParseResult& result) {
         }
     });
 
+    test_and_set<bool>(result, "prune", [&](auto v) {
+        if (v) {
+            std::cout << "Enable prune." << std::endl;
+            config.prune_amount = 0;
+        }
+    });
+
+    test_and_set<float>(result, "prune_amount", [&](auto v) {
+        if (v < 0) return;
+        std::cout << "Prune: " << v << std::endl;
+        config.prune_amount = v;
+    });
+
     config.input_path  = result["input"].as<std::string>();
     config.output_path = result["output"].as<std::string>();
 
@@ -165,6 +178,12 @@ int main(int argc, char* argv[]) {
             ("threads",
              "Maximum threads to use",
              cxxopts::value<int>()->default_value("-1"))
+            ("prune",
+             "Permit pruning",
+             cxxopts::value<bool>()->default_value("false"))
+            ("prune_amount",
+             "Set pruning tolerance",
+             cxxopts::value<float>()->default_value("-1"))
             ("i,input", "Input file", cxxopts::value<std::string>())
             ("o,output", "Output file", cxxopts::value<std::string>())
             ("positional",
@@ -221,6 +240,12 @@ int main(int argc, char* argv[]) {
     } else {
         for (auto const& f : plugins) {
             if (f(ext)) break;
+        }
+    }
+
+    if (config.prune_amount) {
+        for (auto& grid : grids) {
+            grid->pruneGrid(*config.prune_amount);
         }
     }
 

@@ -25,6 +25,8 @@ struct Config {
 
     std::optional<int> num_threads;
 
+    std::optional<float> prune_amount;
+
     std::string get_flag(std::string key) const {
         auto iter = all_flags.find(key);
         if (iter == all_flags.end()) return {};

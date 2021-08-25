@@ -7,6 +7,7 @@
 
 #include <openvdb/openvdb.h>
 #include <openvdb/tools/Composite.h>
+#include <openvdb/tools/Prune.h>
 
 template <typename... T>
 struct dependent_false {
