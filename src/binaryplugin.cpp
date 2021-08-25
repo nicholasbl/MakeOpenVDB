@@ -5,7 +5,7 @@
 #include <charconv>
 #include <fstream>
 
-BinaryPlugin::BinaryPlugin() { }
+BinaryPlugin::BinaryPlugin(Config const&) { }
 
 BinaryPlugin::~BinaryPlugin() { }
 

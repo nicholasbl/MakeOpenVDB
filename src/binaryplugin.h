@@ -7,7 +7,7 @@
 
 class BinaryPlugin {
 public:
-    BinaryPlugin();
+    BinaryPlugin(Config const&);
     ~BinaryPlugin();
 
     static bool recognized(fs::path const&);

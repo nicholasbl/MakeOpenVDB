@@ -7,7 +7,7 @@
 
 class VTKPlugin {
 public:
-    VTKPlugin();
+    VTKPlugin(Config const&);
     ~VTKPlugin();
 
     static bool recognized(fs::path const&);

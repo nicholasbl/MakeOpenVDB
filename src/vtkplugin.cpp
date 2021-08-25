@@ -450,7 +450,7 @@ openvdb::GridPtrVec convert_amrex(Config const& config) {
     reader->SetFileName(config.input_path.c_str());
     reader->Update();
 
-    int level =
+    const int level =
         config.requested_amr_level.value_or(reader->GetNumberOfLevels());
 
     reader->SetMaxLevel(level);
@@ -527,10 +527,12 @@ openvdb::GridPtrVec convert_amrex(Config const& config) {
 }
 
 
-VTKPlugin::VTKPlugin() {
-    vtkSMPTools::Initialize(std::thread::hardware_concurrency());
+VTKPlugin::VTKPlugin(Config const& config) {
+    auto hwc = config.num_threads.value_or(std::thread::hardware_concurrency());
+    vtkSMPTools::Initialize(hwc);
 
-    std::cout << vtkSMPTools::GetEstimatedNumberOfThreads() << "\n";
+    std::cout << "VTK Concurrency: "
+              << vtkSMPTools::GetEstimatedNumberOfThreads() << "\n";
 }
 
 VTKPlugin::~VTKPlugin() { }

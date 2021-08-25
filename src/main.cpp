@@ -53,8 +53,18 @@ Config configure(cxxopts::ParseResult& result) {
         if (v > 0) config.sample_rate = v;
     });
 
-    test_and_set<float>(result, "level", [&](auto v) {
-        if (v > 0) config.requested_amr_level = v;
+    test_and_set<int>(result, "level", [&](auto v) {
+        if (v > 0) {
+            std::cout << "Using level: " << v << std::endl;
+            config.requested_amr_level = v;
+        }
+    });
+
+    test_and_set<int>(result, "threads", [&](auto v) {
+        if (v > 0) {
+            std::cout << "Using threads: " << v << std::endl;
+            config.num_threads = v;
+        }
     });
 
     config.input_path  = result["input"].as<std::string>();
@@ -151,6 +161,9 @@ int main(int argc, char* argv[]) {
              cxxopts::value<float>()->default_value("-1.0"))
             ("l,level",
              "Requested AMR Level",
+             cxxopts::value<int>()->default_value("-1"))
+            ("threads",
+             "Maximum threads to use",
              cxxopts::value<int>()->default_value("-1"))
             ("i,input", "Input file", cxxopts::value<std::string>())
             ("o,output", "Output file", cxxopts::value<std::string>())
