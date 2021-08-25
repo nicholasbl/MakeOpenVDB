@@ -113,7 +113,7 @@ void install_plugin(openvdb::GridPtrVec& grids, Config const& config) {
             abi::__cxa_demangle(typeid(T).name(), nullptr, &length, &status);
 
         plugin_map[type_name] = [&grids, &config]() {
-            T p;
+            T p(config);
             grids = p.convert(config);
         };
 
@@ -125,7 +125,7 @@ void install_plugin(openvdb::GridPtrVec& grids, Config const& config) {
     plugins.push_back([&grids, &config](fs::path const& ext) {
         if (!T::recognized(ext)) return false;
 
-        T p;
+        T p(config);
         grids = p.convert(config);
 
         return true;
