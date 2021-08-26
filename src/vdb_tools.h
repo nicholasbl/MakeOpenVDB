@@ -3,6 +3,7 @@
 
 #include "common.h"
 
+#include <list>
 #include <mutex>
 #include <optional>
 #include <type_traits>
