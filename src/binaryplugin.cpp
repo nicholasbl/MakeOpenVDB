@@ -114,74 +114,21 @@ compute_index(size_t x, size_t y, size_t z, std::array<size_t, 3> const& dims) {
 template <class T>
 auto consume_vector(std::array<size_t, 3> dims,
                     std::vector<T> const& v,
-                    std::string           name) {
+                    std::string           name,
+                    Config const&         c) {
 
     auto grid = build_open_vdb(
-        dims, [&v, &dims](size_t x, size_t y, size_t z) -> float {
+        dims,
+        [&v, &dims](size_t x, size_t y, size_t z) -> float {
             auto index = compute_index(x, y, z, dims);
 
             return float(v[index]);
-        });
+        },
+        c);
 
     grid->setName(name);
 
     return grid;
-
-    /*
-
-    auto main_grid = openvdb::FloatGrid::create();
-
-    main_grid->setName(name);
-
-
-    std::list<openvdb::FloatGrid::Ptr> sub_grids;
-
-    std::mutex grid_mutex;
-
-
-    tbb::parallel_for(tbb::blocked_range<int>(0, dims[2]),
-                      [dims, &v, &grid_mutex, &sub_grids](auto const& range) {
-                          auto sub_grid = openvdb::FloatGrid::create();
-                          auto accessor = sub_grid->getAccessor();
-
-                          openvdb::Coord ijk;
-
-                          int& x = ijk[0];
-                          int& y = ijk[1];
-                          int& z = ijk[2];
-
-                          for (z = range.begin(); z != range.end(); ++z) {
-                              for (y = 0; y < dims[1]; ++y) {
-                                  for (x = 0; x < dims[0]; ++x) {
-
-                                      auto index = compute_index(x, y, z, dims);
-
-                                      T value = v[index];
-
-                                      accessor.setValue(ijk, float(value));
-                                  }
-                              }
-                          }
-
-                          {
-                              std::scoped_lock lock(grid_mutex);
-
-                              sub_grids.push_back(sub_grid);
-                          }
-                      });
-
-    {
-        // merge grids
-
-        while (!sub_grids.empty()) {
-            auto ptr = sub_grids.back();
-            sub_grids.pop_back();
-
-            openvdb::tools::compReplace(*main_grid, *ptr);
-        }
-    }
-
-    return main_grid;*/
 }
 
 openvdb::GridPtrVec BinaryPlugin::convert(Config const& c) {
@@ -226,7 +173,7 @@ openvdb::GridPtrVec BinaryPlugin::convert(Config const& c) {
 
         read_file_into(c.input_path, raw_data);
 
-        ret.push_back(consume_vector(dims, raw_data, data_name));
+        ret.push_back(consume_vector(dims, raw_data, data_name, c));
 
     } else {
         std::vector<float> raw_data(total_element_count);

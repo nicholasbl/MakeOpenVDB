@@ -59,7 +59,8 @@ VTKTYPE figure_type(int t) {
 
 auto write_to_grid(vtkDataArray*                array,
                    std::string const&           override_name,
-                   std::array<size_t, 3> const& dims) {
+                   std::array<size_t, 3> const& dims,
+                   Config const&                c) {
 
     std::cout << "Working on: " << array->GetName() << "\n";
 
@@ -91,7 +92,8 @@ auto write_to_grid(vtkDataArray*                array,
             if (value > range_min) return value;
 
             return std::nullopt;
-        });
+        },
+        c);
 
 
     if (override_name.size()) {
@@ -200,7 +202,7 @@ openvdb::GridPtrVec convert_image(vtkImageData* image, Config const& config) {
 
         if (iter == config.name_map.end()) continue;
 
-        auto ptr = write_to_grid(array, iter->second, dims);
+        auto ptr = write_to_grid(array, iter->second, dims, config);
         ret.push_back(ptr);
     }
 

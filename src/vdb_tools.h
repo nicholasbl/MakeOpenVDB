@@ -1,6 +1,8 @@
 #ifndef VDB_TOOLS_H
 #define VDB_TOOLS_H
 
+#include "common.h"
+
 #include <mutex>
 #include <optional>
 #include <type_traits>
@@ -16,7 +18,8 @@ struct dependent_false {
 
 
 template <class Reader>
-[[nodiscard]] auto build_open_vdb(std::array<size_t, 3> dims, Reader const& a) {
+[[nodiscard]] auto
+build_open_vdb(std::array<size_t, 3> dims, Reader const& a, Config const& c) {
     auto main_grid = openvdb::FloatGrid::create();
 
     std::list<openvdb::FloatGrid::Ptr> sub_grids;
@@ -80,6 +83,10 @@ template <class Reader>
 
             openvdb::tools::compReplace(*main_grid, *ptr);
         }
+    }
+
+    if (c.prune_amount) {
+        openvdb::tools::prune(main_grid->tree(), *c.prune_amount);
     }
 
     return main_grid;

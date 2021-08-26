@@ -10,6 +10,7 @@
 
 #include <openvdb/openvdb.h>
 #include <openvdb/tools/Composite.h>
+#include <openvdb/tools/Prune.h>
 
 #include <array>
 #include <cxxabi.h>
@@ -242,13 +243,6 @@ int main(int argc, char* argv[]) {
             if (f(ext)) break;
         }
     }
-
-    if (config.prune_amount) {
-        for (auto& grid : grids) {
-            grid->pruneGrid(*config.prune_amount);
-        }
-    }
-
 
     openvdb::io::File file(config.output_path);
     file.write(grids);
