@@ -31,14 +31,12 @@ void split_ref_into(std::string_view               str,
 }
 
 std::optional<std::array<size_t, 3>> get_dims(Config const& c) {
-    auto dim_string = c.get_flag("--dims");
-
-    if (dim_string.empty()) {
+    if (!c.bin_dims) {
         std::cerr << "Need flat binary file dimensions flag (--dims X:Y:Z).\n";
         return std::nullopt;
     }
 
-    std::string_view view = dim_string;
+    std::string_view view = c.bin_dims.value();
 
     std::vector<std::string_view> splits;
 
@@ -140,9 +138,7 @@ openvdb::GridPtrVec BinaryPlugin::convert(Config const& c) {
 
     bool is_double = false;
 
-    auto type_string = c.get_flag("--type");
-
-    if (type_string == "double") { is_double = true; }
+    if (c.has_flag("--bin_double")) { is_double = true; }
 
     auto dims = result.value();
 

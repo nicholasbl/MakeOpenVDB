@@ -81,6 +81,13 @@ Config configure(cxxopts::ParseResult& result) {
         config.prune_amount = v;
     });
 
+    test_and_set<std::string>(result, "bin_dims", [&](auto v) {
+        if (v.empty()) return;
+        std::cout << "Bin Dims: " << v << std::endl;
+        config.bin_dims = v;
+    });
+
+
     config.input_path  = result["input"].as<std::string>();
     config.output_path = result["output"].as<std::string>();
 
@@ -185,6 +192,9 @@ int main(int argc, char* argv[]) {
             ("prune_amount",
              "Set pruning tolerance",
              cxxopts::value<float>()->default_value("-1"))
+            ("bin_dims",
+             "Set binary volume dimensions",
+             cxxopts::value<std::string>()->default_value(""))
             ("i,input", "Input file", cxxopts::value<std::string>())
             ("o,output", "Output file", cxxopts::value<std::string>())
             ("positional",

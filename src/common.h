@@ -27,11 +27,15 @@ struct Config {
 
     std::optional<float> prune_amount;
 
+    std::optional<std::string> bin_dims;
+
     std::string get_flag(std::string key) const {
         auto iter = all_flags.find(key);
         if (iter == all_flags.end()) return {};
         return iter->second;
     }
+
+    bool has_flag(std::string key) const { return all_flags.count(key); }
 };
 
 
