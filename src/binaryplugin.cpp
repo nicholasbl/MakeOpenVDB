@@ -107,7 +107,7 @@ bool read_file_into(fs::path const& file, std::vector<T>& v) {
 inline size_t
 compute_index(size_t x, size_t y, size_t z, std::array<size_t, 3> const& dims) {
     // return x + dims[0] * (y + dims[1] * z);
-    return z + dims[0] * (y + dims[1] * x);
+    return z + dims[2] * (y + dims[1] * x);
 }
 
 template <class T>
@@ -179,6 +179,8 @@ openvdb::GridPtrVec BinaryPlugin::convert(Config const& c) {
         std::vector<float> raw_data(total_element_count);
 
         read_file_into(c.input_path, raw_data);
+
+        ret.push_back(consume_vector(dims, raw_data, data_name, c));
     }
 
     return ret;
