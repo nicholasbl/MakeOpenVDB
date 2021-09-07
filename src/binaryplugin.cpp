@@ -2,6 +2,10 @@
 
 #include "vdb_tools.h"
 
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+
 #include <charconv>
 #include <fstream>
 
@@ -70,38 +74,32 @@ std::optional<std::array<size_t, 3>> get_dims(Config const& c) {
     return ret;
 }
 
+// cant use span due to no support < gcc 10
 template <class T>
-bool read_file_into(fs::path const& file, std::vector<T>& v) {
-    std::ifstream strm(file.c_str(),
-                       std::ios::in | std::ios::binary | std::ios::ate);
+std::tuple<T const*, size_t, int> map_file_to(fs::path const& file) {
 
-    if (!strm.good()) {
-        std::cerr << "Unable to open file.\n";
-        return false;
+    if (!fs::is_regular_file(file)) return { nullptr, 0, 0 };
+
+    auto file_size = fs::file_size(file);
+
+    int fd = open(file.c_str(), O_RDONLY);
+
+    if (fd < 0) {
+        // badness
+        return { nullptr, 0, 0 };
     }
 
-    size_t file_size = strm.tellg();
+    void* ptr =
+        mmap(nullptr, file_size, PROT_READ, MAP_FILE | MAP_PRIVATE, fd, 0);
 
-    auto needed_byte_count = sizeof(T) * v.size();
-
-    if (file_size < needed_byte_count) {
-        std::cerr << "File not large enough; only " << file_size
-                  << " bytes available.\n";
-        return false;
+    if (!ptr) {
+        close(fd);
+        return { nullptr, 0, 0 };
     }
 
-    strm.seekg(0, std::ios::beg);
+    size_t element_count = file_size / sizeof(T);
 
-    auto* start = reinterpret_cast<char*>(v.data());
-
-    strm.read(start, needed_byte_count);
-
-    if (!strm.good()) {
-        std::cerr << "Unable to read all file contents.\n";
-        return false;
-    }
-
-    return true;
+    return { reinterpret_cast<T const*>(ptr), element_count, fd };
 }
 
 inline size_t
@@ -111,21 +109,30 @@ compute_index(size_t x, size_t y, size_t z, std::array<size_t, 3> const& dims) {
 }
 
 template <class T>
-auto consume_vector(std::array<size_t, 3> dims,
-                    std::vector<T> const& v,
-                    std::string           name,
-                    Config const&         c) {
+auto consume_mapping(std::array<size_t, 3>             dims,
+                     std::tuple<T const*, size_t, int> mapping,
+                     std::string                       name,
+                     Config const&                     c) {
 
-    auto grid = build_open_vdb(
-        dims,
-        [&v, &dims](size_t x, size_t y, size_t z) -> float {
-            auto index = compute_index(x, y, z, dims);
+    auto [data, element_count, fd] = mapping;
 
-            return float(v[index]);
-        },
-        c);
+    // workaround for noncapture of structured bindings
+    auto handler = [data = data, element_count = element_count, dims](
+                       size_t x, size_t y, size_t z) -> float {
+        auto index = compute_index(x, y, z, dims);
+
+        assert(index < element_count);
+
+        return float(data[index]);
+    };
+
+    auto grid = build_open_vdb(dims, handler, c);
 
     grid->setName(name);
+
+    munmap((void*)(data), element_count * sizeof(T));
+
+    close(fd);
 
     return grid;
 }
@@ -169,18 +176,12 @@ openvdb::GridPtrVec BinaryPlugin::convert(Config const& c) {
     std::cout << "Storing data in field: " << data_name << std::endl;
 
     if (is_double) {
-        std::vector<double> raw_data(total_element_count);
-
-        read_file_into(c.input_path, raw_data);
-
-        ret.push_back(consume_vector(dims, raw_data, data_name, c));
+        ret.push_back(consume_mapping(
+            dims, map_file_to<double>(c.input_path), data_name, c));
 
     } else {
-        std::vector<float> raw_data(total_element_count);
-
-        read_file_into(c.input_path, raw_data);
-
-        ret.push_back(consume_vector(dims, raw_data, data_name, c));
+        ret.push_back(consume_mapping(
+            dims, map_file_to<float>(c.input_path), data_name, c));
     }
 
     return ret;
