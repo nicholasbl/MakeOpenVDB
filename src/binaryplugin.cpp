@@ -9,6 +9,9 @@
 #include <charconv>
 #include <fstream>
 
+// cant use span due to no support < gcc 10
+// laziness abounds in this code...
+
 BinaryPlugin::BinaryPlugin(Config const&) { }
 
 BinaryPlugin::~BinaryPlugin() { }
@@ -74,11 +77,56 @@ std::optional<std::array<size_t, 3>> get_dims(Config const& c) {
     return ret;
 }
 
-// cant use span due to no support < gcc 10
-template <class T>
-std::tuple<T const*, size_t, int> map_file_to(fs::path const& file) {
+struct MemData {
+    std::unique_ptr<std::byte[]> data;
+    std::size_t                  byte_count;
 
-    if (!fs::is_regular_file(file)) return { nullptr, 0, 0 };
+    std::byte const* begin() const { return data.get(); }
+};
+
+struct MapData {
+    int fd = -1;
+
+    std::byte const* data;
+    size_t           byte_count;
+
+    ~MapData() {
+        if (fd >= 0) {
+            munmap((void*)(data), byte_count);
+            close(fd);
+        }
+    }
+
+    std::byte const* begin() const { return data; }
+};
+
+std::unique_ptr<MemData> read_file_into(fs::path const& file) {
+
+    if (!fs::is_regular_file(file)) return nullptr;
+
+    auto file_size = fs::file_size(file);
+
+    std::ifstream ifs(file, std::ios::in | std::ios::binary);
+
+    if (!ifs.good()) return nullptr;
+
+    auto ret = std::make_unique<MemData>();
+
+    ret->data = std::make_unique<std::byte[]>(file_size);
+
+    ifs.read(reinterpret_cast<char*>(ret->data.get()), file_size);
+
+    if (!ifs) { return nullptr; }
+
+    ret->byte_count = file_size;
+
+    return ret;
+}
+
+
+std::unique_ptr<MapData> map_file_to(fs::path const& file) {
+
+    if (!fs::is_regular_file(file)) return nullptr;
 
     auto file_size = fs::file_size(file);
 
@@ -86,7 +134,7 @@ std::tuple<T const*, size_t, int> map_file_to(fs::path const& file) {
 
     if (fd < 0) {
         // badness
-        return { nullptr, 0, 0 };
+        return nullptr;
     }
 
     void* ptr =
@@ -94,12 +142,15 @@ std::tuple<T const*, size_t, int> map_file_to(fs::path const& file) {
 
     if (!ptr) {
         close(fd);
-        return { nullptr, 0, 0 };
+        return nullptr;
     }
 
-    size_t element_count = file_size / sizeof(T);
+    auto ret        = std::make_unique<MapData>();
+    ret->fd         = fd;
+    ret->data       = reinterpret_cast<std::byte const*>(ptr);
+    ret->byte_count = file_size;
 
-    return { reinterpret_cast<T const*>(ptr), element_count, fd };
+    return ret;
 }
 
 inline size_t
@@ -108,17 +159,19 @@ compute_index(size_t x, size_t y, size_t z, std::array<size_t, 3> const& dims) {
     return z + dims[2] * (y + dims[1] * x);
 }
 
-template <class T>
-auto consume_mapping(std::array<size_t, 3>             dims,
-                     std::tuple<T const*, size_t, int> mapping,
-                     std::string                       name,
-                     Config const&                     c) {
+template <class T, class S>
+auto consume_mapping(std::array<size_t, 3> dims,
+                     S const&              source,
+                     std::string           name,
+                     Config const&         c) {
 
-    auto [data, element_count, fd] = mapping;
+    auto src_ptr    = source.begin();
+    auto byte_count = source.byte_count;
 
-    // workaround for noncapture of structured bindings
-    auto handler = [data = data, element_count = element_count, dims](
-                       size_t x, size_t y, size_t z) -> float {
+    size_t element_count = byte_count / sizeof(T);
+    auto   data          = reinterpret_cast<T const*>(src_ptr);
+
+    auto handler = [=](size_t x, size_t y, size_t z) -> float {
         auto index = compute_index(x, y, z, dims);
 
         assert(index < element_count);
@@ -130,11 +183,34 @@ auto consume_mapping(std::array<size_t, 3>             dims,
 
     grid->setName(name);
 
-    munmap((void*)(data), element_count * sizeof(T));
-
-    close(fd);
-
     return grid;
+}
+
+template <class S>
+auto process_with(std::array<size_t, 3> dims,
+                  S const&              source,
+                  std::string           name,
+                  Config const&         c,
+                  bool                  is_double) {
+    if (is_double) {
+        return consume_mapping<double>(dims, source, name, c);
+    } else {
+        return consume_mapping<float>(dims, source, name, c);
+    }
+}
+
+template <class F>
+auto convert_binary(std::array<size_t, 3> dims,
+                    std::string           name,
+                    Config const&         c,
+                    bool                  is_double,
+                    F&&                   handler) {
+
+    auto r = handler(c.input_path);
+
+    if (!r) throw std::runtime_error("Unable to read file");
+
+    return process_with(dims, *r, name, c, is_double);
 }
 
 openvdb::GridPtrVec BinaryPlugin::convert(Config const& c) {
@@ -149,6 +225,13 @@ openvdb::GridPtrVec BinaryPlugin::convert(Config const& c) {
     if (c.has_flag("--bin_double")) {
         std::cout << "Using doubles..." << std::endl;
         is_double = true;
+    }
+
+    bool use_memmap = false;
+
+    if (c.has_flag("--bin_memmap")) {
+        std::cout << "Using memory mapping..." << std::endl;
+        use_memmap = true;
     }
 
     auto dims = result.value();
@@ -175,13 +258,14 @@ openvdb::GridPtrVec BinaryPlugin::convert(Config const& c) {
 
     std::cout << "Storing data in field: " << data_name << std::endl;
 
-    if (is_double) {
-        ret.push_back(consume_mapping(
-            dims, map_file_to<double>(c.input_path), data_name, c));
+
+    if (use_memmap) {
+        ret.push_back(
+            convert_binary(dims, data_name, c, is_double, map_file_to));
 
     } else {
-        ret.push_back(consume_mapping(
-            dims, map_file_to<float>(c.input_path), data_name, c));
+        ret.push_back(
+            convert_binary(dims, data_name, c, is_double, read_file_into));
     }
 
     return ret;
