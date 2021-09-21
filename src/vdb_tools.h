@@ -78,6 +78,7 @@ auto vdb_chunk(Reader const& a,
 template <class Reader>
 [[nodiscard]] auto
 build_open_vdb(std::array<size_t, 3> dims, Reader const& a, Config const& c) {
+    std::cout << "Starting VDB build..." << std::endl;
     std::list<openvdb::FloatGrid::Ptr> sub_grids;
 
     std::mutex grid_mutex;
@@ -111,17 +112,27 @@ build_open_vdb(std::array<size_t, 3> dims, Reader const& a, Config const& c) {
 
     // merge grids
 
-    auto main_grid = openvdb::FloatGrid::create();
+    std::cout << "Collecting VDB subgrids..." << std::endl;
 
-    while (!sub_grids.empty()) {
-        auto ptr = sub_grids.back();
-        sub_grids.pop_back();
+    openvdb::FloatGrid::Ptr main_grid;
 
-        openvdb::tools::compReplace(*main_grid, *ptr);
+    if (sub_grids.size() == 0) { return main_grid; }
+
+    if (sub_grids.size() == 1) {
+        main_grid = sub_grids.back();
+    } else {
+        main_grid = openvdb::FloatGrid::create();
+
+        while (!sub_grids.empty()) {
+            auto ptr = sub_grids.back();
+            sub_grids.pop_back();
+
+            openvdb::tools::compReplace(*main_grid, *ptr);
+        }
     }
 
-
     if (c.prune_amount) {
+        std::cout << "Pruning..." << std::endl;
         openvdb::tools::prune(main_grid->tree(), *c.prune_amount);
     }
 
