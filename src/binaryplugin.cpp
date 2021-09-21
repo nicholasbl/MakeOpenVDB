@@ -206,6 +206,7 @@ auto convert_binary(std::array<size_t, 3> dims,
                     bool                  is_double,
                     F&&                   handler) {
 
+    std::cout << "Reading file" << std::endl;
     auto r = handler(c.input_path);
 
     if (!r) throw std::runtime_error("Unable to read file");
