@@ -250,6 +250,8 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    std::cout << "Starting VDB file write...\n";
+
     openvdb::io::File file(config.output_path);
     file.write(grids);
     file.close();
