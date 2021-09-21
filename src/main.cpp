@@ -61,12 +61,8 @@ Config configure(cxxopts::ParseResult& result) {
         }
     });
 
-    test_and_set<int>(result, "threads", [&](auto v) {
-        if (v > 0) {
-            std::cout << "Using threads: " << v << std::endl;
-            config.num_threads = v;
-        }
-    });
+    test_and_set<int>(
+        result, "threads", [&](auto v) { config.use_threads = v; });
 
     test_and_set<bool>(result, "prune", [&](auto v) {
         if (v) {
@@ -184,8 +180,8 @@ int main(int argc, char* argv[]) {
              "Requested AMR Level",
              cxxopts::value<int>()->default_value("-1"))
             ("threads",
-             "Maximum threads to use",
-             cxxopts::value<int>()->default_value("-1"))
+             "Enable the use of threads (on by default)",
+             cxxopts::value<int>()->default_value("true"))
             ("prune",
              "Permit pruning",
              cxxopts::value<bool>()->default_value("false"))

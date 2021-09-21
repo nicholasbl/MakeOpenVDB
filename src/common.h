@@ -23,7 +23,7 @@ struct Config {
 
     std::optional<int> requested_amr_level;
 
-    std::optional<int> num_threads;
+    bool use_threads = true;
 
     std::optional<float> prune_amount;
 
