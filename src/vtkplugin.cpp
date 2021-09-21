@@ -530,7 +530,7 @@ openvdb::GridPtrVec convert_amrex(Config const& config) {
 
 
 VTKPlugin::VTKPlugin(Config const& config) {
-    auto hwc = config.num_threads.value_or(std::thread::hardware_concurrency());
+    auto hwc = config.use_threads ? std::thread::hardware_concurrency() : 1;
     vtkSMPTools::Initialize(hwc);
 
     std::cout << "VTK Concurrency: "

@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
              cxxopts::value<int>()->default_value("-1"))
             ("threads",
              "Enable the use of threads (on by default)",
-             cxxopts::value<int>()->default_value("true"))
+             cxxopts::value<int>()->default_value("1"))
             ("prune",
              "Permit pruning",
              cxxopts::value<bool>()->default_value("false"))
