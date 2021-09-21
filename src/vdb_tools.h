@@ -3,6 +3,7 @@
 
 #include "common.h"
 
+#include <iostream>
 #include <list>
 #include <mutex>
 #include <optional>
@@ -29,6 +30,7 @@ Pair<T> make_pair(T a, T b) {
 
 template <class Reader, class IterA>
 auto vdb_chunk(Reader const& a,
+               Config const& c,
                Pair<size_t>  xs,
                Pair<size_t>  ys,
                Pair<IterA>   zs) {
@@ -65,6 +67,10 @@ auto vdb_chunk(Reader const& a,
                 }
             }
         }
+
+        if (!c.use_threads && c.has_flag("--progress")) {
+            std::cout << "P: " << z << "/" << zs.second - 1 << std::endl;
+        }
     }
     return sub_grid;
 }
@@ -80,9 +86,10 @@ build_open_vdb(std::array<size_t, 3> dims, Reader const& a, Config const& c) {
     if (c.use_threads) {
         tbb::parallel_for(
             tbb::blocked_range<int>(0, dims[2]),
-            [dims, &a, &grid_mutex, &sub_grids](auto const& range) {
+            [dims, &a, &c, &grid_mutex, &sub_grids](auto const& range) {
                 auto sub_grid =
                     vdb_chunk(a,
+                              c,
                               { 0, dims[0] },
                               { 0, dims[1] },
                               make_pair(range.begin(), range.end()));
@@ -95,6 +102,7 @@ build_open_vdb(std::array<size_t, 3> dims, Reader const& a, Config const& c) {
             });
     } else {
         auto grid = vdb_chunk(a,
+                              c,
                               { 0, dims[0] },
                               { 0, dims[1] },
                               make_pair(size_t { 0 }, dims[2]));
