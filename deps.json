@@ -1,0 +1,65 @@
+[
+    {
+        "name" : "boost",
+        "type" : "boost",
+        "src"  : "https://boostorg.jfrog.io/artifactory/main/release/1.77.0/source/boost_1_77_0.tar.bz2",
+        "options" : [
+            "cxxflags=\"-std=c++11\"",
+            "link=static"
+        ]
+    },
+    {
+        "name" : "tbb",
+        "type" : "cmake",
+        "src"  : "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.4.0.tar.gz",
+        "options" : [
+            "TBB_TEST OFF",
+            "TBB4PY_BUILD OFF",
+            "TBB_INSTALL_VARS ON",
+            "BUILD_SHARED_LIBS OFF"
+        ]
+    },
+    {
+        "name" : "cblosc",
+        "type" : "cmake",
+        "src" : "https://github.com/Blosc/c-blosc/archive/refs/tags/v1.21.1.tar.gz",
+        "options" : [
+            "BUILD_TESTS OFF",
+            "BUILD_FUZZERS OFF",
+            "BUILD_SHARED OFF",
+            "BUILD_BENCHMARKS OFF"
+        ]
+    },
+    {
+        "name" : "zlib",
+        "type" : "cmake",
+        "src"  : "https://zlib.net/zlib-1.2.11.tar.gz",
+        "options" : [
+            "BUILD_SHARED_LIBS OFF"
+        ]
+    },
+    {
+        "name" : "zstd",
+        "type" : "cmake",
+        "src" : "https://github.com/facebook/zstd/archive/refs/tags/v1.5.0.tar.gz",
+        "options" : [
+            "ZSTD_BUILD_PROGRAMS OFF",
+            "ZSTD_BUILD_TESTS OFF",
+            "ZSTD_BUILD_SHARED OFF"
+        ]
+    },
+    {
+        "name" : "openvdb",
+        "type" : "cmake",
+        "src"  : "https://github.com/AcademySoftwareFoundation/openvdb/archive/refs/tags/v9.0.0.tar.gz",
+        "options" : [
+            "OPENVDB_SIMD SSE42",
+            "USE_BLOSC ON",
+            "USE_ZLIB ON",
+            "USE_IMATH_HALF OFF",
+            "OPENVDB_CORE_SHARED OFF",
+            "OPENVDB_BUILD_BINARIES OFF",
+            "Boost_USE_STATIC_LIBS  ON"
+        ]
+    }
+]

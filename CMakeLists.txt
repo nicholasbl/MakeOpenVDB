@@ -2,16 +2,24 @@ cmake_minimum_required(VERSION 3.1...3.16)
 
 include(cmake/CPM.cmake)
 
+list(APPEND CMAKE_PREFIX_PATH ${CMAKE_SOURCE_DIR}/third_party/)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lib/cmake/OpenVDB)
+set(Boost_USE_STATIC_LIBS ON)
+
 project(make_openvdb VERSION 1.0 LANGUAGES C CXX)
 
 add_executable(make_openvdb src/main.cpp)
 target_compile_features(make_openvdb PUBLIC cxx_std_17)
 
-target_include_directories(make_openvdb PUBLIC /usr/local/include)
-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-target_include_directories(make_openvdb PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+target_include_directories(make_openvdb PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/include/)
+target_include_directories(make_openvdb PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_directories(make_openvdb PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lib/)
 
 
 set(ENABLE_VTK OFF CACHE BOOL "Enable the use of VTK file types")
@@ -52,19 +60,14 @@ CPMAddPackage(
     "CXXOPTS_BUILD_TESTS Off"
 )
 
-find_package(OpenVDB COMPONENTS openvdb)
-
-if (${OpenVDB_FOUND})
-    target_link_libraries(make_openvdb PRIVATE OpenVDB::openvdb)
-else()
-    find_path(OPENVDB_INC openvdb/openvdb.h REQUIRED)
-    find_library(OPENVDB openvdb REQUIRED)
-    find_library(TBB tbb REQUIRED)
-    find_library(HALF NAMES half Half REQUIRED)
-
-    target_include_directories(make_openvdb PRIVATE ${OPENVDB_INC})
-    target_link_libraries(make_openvdb PRIVATE ${OPENVDB} ${TBB} ${HALF})
-endif()
+find_library(OPENVDB openvdb REQUIRED)
+find_library(TBB tbb REQUIRED)
+find_library(HALF NAMES half Half REQUIRED)
+find_library(BLOSC blosc REQUIRED)
+target_link_libraries(make_openvdb PRIVATE
+    ${OPENVDB} ${TBB} ${HALF} ${BLOSC}
+    boost_iostreams
+)
 
 
 set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
