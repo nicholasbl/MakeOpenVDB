@@ -62,10 +62,9 @@ CPMAddPackage(
 
 find_library(OPENVDB openvdb REQUIRED)
 find_library(TBB tbb REQUIRED)
-find_library(HALF NAMES half Half REQUIRED)
 find_library(BLOSC blosc REQUIRED)
 target_link_libraries(make_openvdb PRIVATE
-    ${OPENVDB} ${TBB} ${HALF} ${BLOSC}
+    ${OPENVDB} ${TBB} ${BLOSC}
     boost_iostreams
 )
 

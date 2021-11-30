@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+# we NEED CMAKE 3.18!
+
 import argparse
 import datetime
 import json
@@ -297,11 +299,6 @@ def cmake_strategy(source: Source):
     cmake_options = [
         ("CMAKE_INSTALL_PREFIX", thirdparty_dir),
         ("CMAKE_PREFIX_PATH", thirdparty_dir),
-        ("CMAKE_SYSTEM_PREFIX_PATH", thirdparty_dir),
-        ("CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH", "FALSE"),
-        ("CMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY", "TRUE"),
-        ("CMAKE_FIND_PACKAGE_NO_SYSTEM_PACKAGE_REGISTRY", "TRUE"),
-        ("CMAKE_FIND_ROOT_PATH", thirdparty_dir),
         ("CMAKE_BUILD_TYPE", "Release"),
     ]
 
@@ -328,7 +325,7 @@ def cmake_strategy(source: Source):
     print("Built. Installing...")
 
     install_command = ["--build", source.package_build_dir]
-    install_command += ["--target install"]
+    install_command += ["--target", "install"]
 
     run_cmake_command(install_command)
 
