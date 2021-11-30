@@ -220,9 +220,13 @@ def is_installed(s: Source):
 
 
 def find_shortest_path_to(dir, pattern):
-    n = dir+"/**/"+pattern.upper()
+    n = dir+"/**/"+pattern
 
     pl = glob.glob(n, recursive=True)
+
+    n = dir+"/**/"+pattern.upper()
+
+    pl += glob.glob(n, recursive=True)
 
     n = dir+"/**/"+pattern.lower()
 
