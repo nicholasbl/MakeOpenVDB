@@ -6,7 +6,7 @@
         "options" : [
             "cxxflags=\"-std=c++11\"",
             "link=static",
-            "--without-python",
+            "--without-python"
         ]
     },
     {
